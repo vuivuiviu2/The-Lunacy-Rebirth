@@ -46,7 +46,7 @@ if not _G.SpeedLoopConnected then
     RunService.Heartbeat:Connect(function()
         if humanoid and humanoid.Parent then
             local finalSpeed = BASE_SPEED * _G.ColaSpeedMultiplier
-            if finalSpeed > 45 then finalSpeed = 45 end 
+            if finalSpeed > 32 then finalSpeed = 32 end 
             humanoid.WalkSpeed = finalSpeed
         end
     end)
