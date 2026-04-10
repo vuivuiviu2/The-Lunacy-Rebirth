@@ -1,0 +1,147 @@
+local TOOL_ID = "rbxassetid://82285752606096"
+local ANIM_ID = "rbxassetid://100296215597460"
+local ICON_ID = "rbxassetid://73044343517626" -- Icon mới của ông
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local player = game:GetService("Players").LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+-- BIẾN QUẢN LÝ TỐC ĐỘ CỘNG DỒN
+_G.ColaSpeedMultiplier = _G.ColaSpeedMultiplier or 1
+local BASE_SPEED = 16
+
+-- --- PHẦN 1: ANTI-CHEAT COLLISION ---
+local function startAntiCheat(char)
+    if char:FindFirstChild("CollisionClone") then char.CollisionClone:Destroy() end
+    local col = char:FindFirstChild("CollisionPart") or char:FindFirstChild("Collision") or rootPart
+    local colClone = col:Clone()
+    colClone.CanCollide = false
+    colClone.Massless = true
+    colClone.CanQuery = false 
+    colClone.Name = "CollisionClone"
+    if colClone:FindFirstChild("CollisionCrouch") then colClone.CollisionCrouch:Destroy() end
+    colClone.Parent = char
+    
+    task.spawn(function()
+        while char.Parent do
+            if rootPart.Anchored then
+                colClone.Massless = true
+                repeat task.wait() until not rootPart.Anchored
+                task.wait(0.15)
+            else
+                colClone.Massless = not colClone.Massless
+            end
+            task.wait(0.3)
+        end
+    end)
+end
+startAntiCheat(character)
+
+-- Vòng lặp ép tốc độ (Max 45)
+if not _G.SpeedLoopConnected then
+    _G.SpeedLoopConnected = true
+    RunService.Heartbeat:Connect(function()
+        if humanoid and humanoid.Parent then
+            local finalSpeed = BASE_SPEED * _G.ColaSpeedMultiplier
+            if finalSpeed > 45 then finalSpeed = 45 end 
+            humanoid.WalkSpeed = finalSpeed
+        end
+    end)
+end
+
+-- --- PHẦN 2: LOGIC BLOXY COLA ---
+local holdAnim = Instance.new("Animation")
+holdAnim.AnimationId = ANIM_ID
+
+local function getCola()
+    local success, objects = pcall(function() return game:GetObjects(TOOL_ID) end)
+    if success and objects[1] then
+        local tool = objects[1]:IsA("Tool") and objects[1] or objects[1]:FindFirstChildOfClass("Tool")
+        if tool then
+            -- 1. Đổi Icon vật phẩm
+            tool.TextureId = ICON_ID
+            
+            local raisedGrip = CFrame.new(0.5, -0.5, 0) 
+            local drinkingGrip = CFrame.new(1.6, -0.5, 1.3) * CFrame.Angles(math.rad(-90), 0, 0)
+            local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+            tool.Grip = raisedGrip
+            tool.Parent = player:FindFirstChildOfClass("Backpack")
+
+            local currentAnimTrack = nil
+            tool.Equipped:Connect(function()
+                currentAnimTrack = humanoid:LoadAnimation(holdAnim)
+                currentAnimTrack.Priority = Enum.AnimationPriority.Action
+                currentAnimTrack:Play()
+            end)
+            
+            tool.Unequipped:Connect(function()
+                if currentAnimTrack then currentAnimTrack:Stop() end
+            end)
+
+            local isDrinking = false
+            tool.Activated:Connect(function()
+                if isDrinking then return end
+                isDrinking = true
+
+                -- Hiệu ứng uống
+                TweenService:Create(tool, tweenInfo, {Grip = drinkingGrip}):Play()
+                local ds = tool:FindFirstChildWhichIsA("Sound", true) or Instance.new("Sound", tool.Handle)
+                ds.SoundId = "rbxassetid://10722059"
+                ds:Play()
+
+                -- --- LOGIC BUFF TÍM (Tốc độ + Ánh sáng + Màu da) ---
+                task.spawn(function()
+                    _G.ColaSpeedMultiplier = _G.ColaSpeedMultiplier + 0.5
+                    
+                    -- Tạo ánh sáng tím
+                    local pLight = Instance.new("PointLight")
+                    pLight.Color = Color3.fromRGB(170, 0, 255) -- Màu tím
+                    pLight.Range = 15
+                    pLight.Brightness = 3
+                    pLight.Parent = rootPart
+                    
+                    -- Đổi màu da sang tím (Lưu màu cũ để trả lại)
+                    local oldColors = {}
+                    for _, part in pairs(character:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            oldColors[part.Name] = part.Color
+                            part.Color = Color3.fromRGB(130, 0, 200)
+                        end
+                    end
+                    
+                    task.wait(15) -- Thời gian buff
+                    
+                    -- Hết buff: Xóa đèn, trả màu da
+                    pLight:Destroy()
+                    for _, part in pairs(character:GetChildren()) do
+                        if part:IsA("BasePart") and oldColors[part.Name] then
+                            part.Color = oldColors[part.Name]
+                        end
+                    end
+                    
+                    _G.ColaSpeedMultiplier = _G.ColaSpeedMultiplier - 0.5
+                    if _G.ColaSpeedMultiplier < 1 then _G.ColaSpeedMultiplier = 1 end
+                end)
+
+                task.wait(1.2)
+                humanoid.Health = math.min(humanoid.Health + 25, humanoid.MaxHealth)
+                
+                local lower = TweenService:Create(tool, tweenInfo, {Grip = raisedGrip})
+                lower:Play()
+                lower.Completed:Connect(function()
+                    task.wait(0.2)
+                    if currentAnimTrack then currentAnimTrack:Stop() end
+                    tool:Destroy()
+                    isDrinking = false
+                end)
+            end)
+        end
+    end
+end
+
+getCola()
+
